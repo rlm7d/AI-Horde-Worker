@@ -38,14 +38,13 @@ LEWD_CONTEXT = {
     "hentai": 0.25,
     "orgy": 0.21,
     "nudity": 0.195,
-    "lesbian scene": 0.22,
-    "gay scene": 0.22,
+    "lesbian scene": 0.2,
+    "gay scene": 0.2,
 }
 CONTROL_WORDS = [
     "pregnant",
     "anime",
     "shota",
-    "east asian",
 ]
 TEST_WORDS = []
 
@@ -151,14 +150,8 @@ PROMPT_BOOSTS = [
             "tweens": 0.02,
         },
     },
-    {
-        "regex": re.compile(r"realistic", re.IGNORECASE),
-        "adjustments": {
-            "lolicon": -0.015,
-        },
-    },
 ]
-NEGPROMPT_BOOSTS = {"mature" " old" "adult" "elderly", "middle aged"}
+NEGPROMPT_BOOSTS = {"mature" "old" "adult" "elderly", "middle aged"}
 NEGPROMPT_DEBUFFS = {"young" "little" "child"}
 
 PAIRS = {
@@ -203,15 +196,6 @@ CONTROL_WORD_ADJUSTMENTS = [
             ("tweens", 0.01),
             ("child", 0.013),
             ("children", 0.013),
-        ],
-    },
-    {
-        # For some reason, clip thinks all east asian woman are very child-like
-        "control": ("east asian", 0.24),
-        "adjustments": [
-            ("teen", -0.01),
-            ("child", -0.01),
-            ("tween", -0.01),
         ],
     },
 ]
