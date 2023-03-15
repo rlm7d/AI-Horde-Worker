@@ -358,6 +358,9 @@ class StableDiffusionHordeJob(HordeJobFramework):
 =======
             self.censored = True
         # We unload the generator from RAM
+<<<<<<< HEAD
+>>>>>>> parent of f4b0b52 (Adds CSAM post-processing filter to AI Horde Worker)
+=======
 >>>>>>> parent of f4b0b52 (Adds CSAM post-processing filter to AI Horde Worker)
         generator = None
         if not self.censored:
