@@ -47,8 +47,12 @@ if args.fix:
 else:
     print("fix not requested")
 
-    black_args.extend(("--check", "--diff"))
-    isort_args.extend(("--check-only", "--diff"))
+    black_args.append("--check")
+    black_args.append("--diff")
+
+    isort_args.append("--check-only")
+    isort_args.append("--diff")
+
 lint_processes = [
     black_args,
     isort_args,
@@ -58,9 +62,9 @@ lint_processes = [
 for process_args in lint_processes:
     process_args.extend(src)
 
-    COMMAND = " ".join(process_args)
-    print(f"\nRunning {COMMAND}")
+    command = " ".join(process_args)
+    print(f"\nRunning {command}")
     try:
-        subprocess.run(COMMAND, shell=True, check=True)
+        subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
         sys.exit(1)

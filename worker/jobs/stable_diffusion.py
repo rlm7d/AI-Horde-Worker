@@ -13,7 +13,6 @@ from nataili.stable_diffusion.diffusers.inpainting import inpainting
 from nataili.util.logger import logger
 from PIL import UnidentifiedImageError
 
-from worker import csam
 from worker.bridge_data.stable_diffusion import StableDiffusionBridgeData
 from worker.enums import JobStatus
 from worker.jobs.framework import HordeJobFramework
@@ -37,7 +36,6 @@ class StableDiffusionHordeJob(HordeJobFramework):
         self.current_id = self.pop["id"]
         self.current_payload = self.pop["payload"]
         self.r2_upload = self.pop.get("r2_upload", False)
-        self.clip_model = None
         self.last_stats_time = time.monotonic()
 
     @logger.catch(reraise=True)
@@ -52,19 +50,13 @@ class StableDiffusionHordeJob(HordeJobFramework):
         if self.current_payload.get("control_type"):
             self.stale_time = self.stale_time * 3
         self.stale_time += 3 * count_parentheses(self.current_payload["prompt"])
-        # PoC Stuff
-        if "ViT-L/14" in self.available_models:
-            logger.debug("ViT-L/14 model loaded")
-            self.clip_model = self.model_manager.loaded_models["ViT-L/14"]
-        else:
-            self.clip_model = None
         # Here starts the Stable Diffusion Specific Logic
         # We allow a generation a plentiful 3 seconds per step before we consider it stale
         # Generate Image
         # logger.info([self.current_id,self.current_payload])
+        use_nsfw_censor = False
         censor_image = None
         censor_reason = None
-        use_nsfw_censor = False
         if self.bridge_data.censor_nsfw and not self.bridge_data.nsfw:
             use_nsfw_censor = True
             censor_image = self.bridge_data.censor_image_sfw_worker
@@ -107,14 +99,6 @@ class StableDiffusionHordeJob(HordeJobFramework):
                 if gen_payload["sampler_name"] == "dpmsolver" and "stable diffusion 2" not in model_baseline:
                     logger.warning(f"dpmsolver cannot be used with {self.current_model}. Falling back to k_euler.")
                     gen_payload["sampler_name"] = "k_euler"
-                if gen_payload["sampler_name"] == "DDIM" and source_mask is not None:
-                    logger.warning(
-                        f"DDIM cannot be used with a mask for {self.current_model}. Falling back to k_euler."
-                    )
-                    gen_payload["sampler_name"] = "k_euler"
-                if gen_payload["sampler_name"] == "DDIM" and self.current_model == "pix2pix":
-                    logger.warning(f"DDIM cannot be used with {self.current_model}. Falling back to k_euler_a.")
-                    gen_payload["sampler_name"] = "k_euler_a"
             if "cfg_scale" in self.current_payload:
                 gen_payload["cfg_scale"] = self.current_payload["cfg_scale"]
             if "ddim_eta" in self.current_payload:
@@ -148,7 +132,7 @@ class StableDiffusionHordeJob(HordeJobFramework):
                 req_type = "img2img"
             elif source_processing == "inpainting":
                 req_type = "inpainting"
-            elif source_processing == "outpainting":
+            if source_processing == "outpainting":
                 req_type = "outpainting"
             if gen_payload["sampler_name"] == "dpmsolver":
                 logger.warning("dpmsolver cannot handle img2img. Falling back to k_euler")
@@ -162,8 +146,7 @@ class StableDiffusionHordeJob(HordeJobFramework):
             for available_model in self.available_models:
                 if (
                     available_model != "stable_diffusion_inpainting"
-                    and available_model
-                    not in StableDiffusionBridgeData.POSTPROCESSORS + StableDiffusionBridgeData.INTERROGATORS
+                    and available_model not in StableDiffusionBridgeData.POSTPROCESSORS
                 ):
                     logger.debug(
                         [
@@ -183,9 +166,9 @@ class StableDiffusionHordeJob(HordeJobFramework):
             # if the model persists as inpainting for text2img or img2img, we abort.
             if self.current_model == "stable_diffusion_inpainting":
                 # We remove the base64 from the prompt to avoid flooding the output on the error
-                if isinstance(self.pop.get("source_image", ""), str) and len(self.pop.get("source_image", "")) > 10:
+                if type(self.pop.get("source_image", "")) is str and len(self.pop.get("source_image", "")) > 10:
                     self.pop["source_image"] = len(self.pop.get("source_image", ""))
-                if isinstance(self.pop.get("source_mask", ""), str) and len(self.pop.get("source_mask", "")) > 10:
+                if type(self.pop.get("source_mask", "")) is str and len(self.pop.get("source_mask", "")) > 10:
                     self.pop["source_mask"] = len(self.pop.get("source_mask", ""))
                 logger.error(
                     "Received an non-inpainting request for inpainting model. This shouldn't happen. "
@@ -198,18 +181,12 @@ class StableDiffusionHordeJob(HordeJobFramework):
         # Reject jobs for SD2Depth/pix2pix if not img2img
         if self.current_model in ["Stable Diffusion 2 Depth", "pix2pix"] and req_type != "img2img":
             # We remove the base64 from the prompt to avoid flooding the output on the error
-            if (
-                source_image is not None
-                and isinstance(self.pop.get("source_image", ""), str)
-                and len(self.pop.get("source_image", "")) > 10
-            ):
-                self.pop["source_image"] = len(self.pop.get("source_image", ""))
-            if (
-                source_mask is not None
-                and isinstance(self.pop.get("source_mask", ""), str)
-                and len(self.pop.get("source_mask", "")) > 10
-            ):
-                self.pop["source_mask"] = len(self.pop.get("source_mask", ""))
+            if source_image is not None:
+                if type(self.pop.get("source_image", "")) is str and len(self.pop.get("source_image", "")) > 10:
+                    self.pop["source_image"] = len(self.pop.get("source_image", ""))
+            if source_mask is not None:
+                if type(self.pop.get("source_mask", "")) is str and len(self.pop.get("source_mask", "")) > 10:
+                    self.pop["source_mask"] = len(self.pop.get("source_mask", ""))
             logger.error(
                 "Received an non-img2img request for SD2Depth or Pix2Pix model. This shouldn't happen. "
                 f"Inform the developer. Current payload {self.pop}"
@@ -265,7 +242,7 @@ class StableDiffusionHordeJob(HordeJobFramework):
             self.status = JobStatus.FAULTED
             self.start_submit_thread()
             return
-        if req_type in {"img2img", "txt2img"}:
+        if req_type in ["img2img", "txt2img"]:
             if req_type == "img2img":
                 gen_payload["init_img"] = img_source
                 if img_mask:
@@ -302,7 +279,7 @@ class StableDiffusionHordeJob(HordeJobFramework):
                     safety_checker=safety_checker,
                     filter_nsfw=use_nsfw_censor,
                     disable_voodoo=self.bridge_data.disable_voodoo.active,
-                    control_net_manager=self.model_manager.controlnet or None,
+                    control_net_manager=self.model_manager.controlnet if self.model_manager.controlnet else None,
                 )
         else:
             # These variables do not exist in the outpainting implementation
@@ -376,11 +353,16 @@ class StableDiffusionHordeJob(HordeJobFramework):
         if generator.images[0].get("censored", False):
             logger.info(f"Image censored with reason: {censor_reason}")
             self.image = censor_image
+<<<<<<< HEAD
             self.censored = "censored"
+=======
+            self.censored = True
         # We unload the generator from RAM
+<<<<<<< HEAD
+>>>>>>> parent of f4b0b52 (Adds CSAM post-processing filter to AI Horde Worker)
+=======
+>>>>>>> parent of f4b0b52 (Adds CSAM post-processing filter to AI Horde Worker)
         generator = None
-
-        # Run the CSAM Checker
         if not self.censored:
             is_csam, similarities, similarity_hits = csam.check_for_csam(
                 clip_model=self.clip_model,
@@ -392,32 +374,43 @@ class StableDiffusionHordeJob(HordeJobFramework):
                 logger.warning("Image generated determined to be CSAM. Censoring!")
                 self.image = self.bridge_data.censor_image_csam
                 self.censored = "csam"
-
-        # Run Post-Processors
+        # We unload the generator and interrogator from RAM
         for post_processor in self.current_payload.get("post_processing", []):
             # Do not PP when censored
             if self.censored:
                 continue
             logger.debug(f"Post-processing with {post_processor}...")
             try:
-                # Collect strength for facefixer from job, or set to 0.5 default
-                strength = (
-                    self.current_payload["facefixer_strength"] if "facefixer_strength" in self.current_payload else 0.5
-                )
-                self.image = post_process(post_processor, self.image, self.model_manager, strength=strength)
+                self.image = post_process(post_processor, self.image, self.model_manager)
             except (AssertionError, RuntimeError) as err:
                 logger.warning(
                     "Post-Processor '{}' encountered an error when working on image . Skipping! {}",
                     post_processor,
                     err,
                 )
-            # Edit the webp upload quality if post-processor used
             if self.r2_upload:
                 self.upload_quality = 95
             else:
-                self.upload_quality = (
-                    45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
-                )
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
+                if post_processor in ["RealESRGAN_x4plus"]:
+                    self.upload_quality = 45
+                else:
+                    self.upload_quality = 75
+=======
+                self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
+>>>>>>> parent of 99e2f8c (stylefix)
+=======
+                self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
+>>>>>>> parent of 99e2f8c (stylefix)
+=======
+                self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
+>>>>>>> parent of 99e2f8c (stylefix)
+=======
+                self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
+>>>>>>> parent of 99e2f8c (stylefix)
         logger.debug("post-processing done...")
         self.start_submit_thread()
 
