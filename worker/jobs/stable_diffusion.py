@@ -393,10 +393,14 @@ class StableDiffusionHordeJob(HordeJobFramework):
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
                 if post_processor in ["RealESRGAN_x4plus"]:
                     self.upload_quality = 45
                 else:
                     self.upload_quality = 75
+=======
+                self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
+>>>>>>> parent of 99e2f8c (stylefix)
 =======
                 self.upload_quality = 45 if post_processor in ["RealESRGAN_x4plus", "RealESRGAN_x4plus_anime_6B"] else 75
 >>>>>>> parent of 99e2f8c (stylefix)
