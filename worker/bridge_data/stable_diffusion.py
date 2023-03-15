@@ -60,13 +60,16 @@ class StableDiffusionBridgeData(BridgeDataTemplate):
         top_n = 0
         for model in self.models_to_load[:]:
             # all models
-            if match := re.match(r"ALL ((\w*) )?MODELS", model, re.IGNORECASE):
-                self.models_to_load = self.get_all_models(match[2])
+            match = re.match(r"ALL ((\w*) )?MODELS", model, re.IGNORECASE)
+            if match:
+                self.models_to_load = self.get_all_models(match.group(2))
                 break  # can't be more
-            if match := re.match(r"TOP (\d+)", model, re.IGNORECASE):
+            # top n
+            match = re.match(r"TOP (\d+)", model, re.IGNORECASE)
+            if match:
                 self.models_to_load.remove(model)
-                if int(match[1]) > 0:
-                    top_n = int(match[1])
+                if int(match.group(1)) > 0:
+                    top_n = int(match.group(1))
         if top_n:
             self.models_to_load.extend(self.get_top_n_models(top_n))
 
@@ -124,23 +127,28 @@ class StableDiffusionBridgeData(BridgeDataTemplate):
         if model_name in self.POSTPROCESSORS or model_name in self.INTERROGATORS:
             return False
 
-        return model_name not in self.models_to_skip
+        if model_name in self.models_to_skip:
+            return False
+
+        return True
 
     # Get all models directly from the server, not from nataili, as nataili
     # may not be loaded, e.g. in webui.
     def get_all_models(self, style=""):
+
         # Recognise some magic style constants
         nsfw = None
-        if style:
-            if style.upper() == "SFW":
-                style = ""
-                nsfw = False
-            elif style.upper() == "NSFW":
-                style = ""
-                nsfw = True
+        if style and style.upper() == "SFW":
+            style = ""
+            nsfw = False
+        elif style and style.upper() == "NSFW":
+            style = ""
+            nsfw = True
 
         # Never refresh more than once per hour
-        self.model_database_refresh_frequency = max(self.model_database_refresh_frequency, 3600)
+        if self.model_database_refresh_frequency < 3600:
+            self.model_database_refresh_frequency = 3600
+
         # Should we refresh the model list?
         if (
             self._last_model_db_refresh
@@ -197,10 +205,13 @@ class StableDiffusionBridgeData(BridgeDataTemplate):
 
     # Get the top n most popular models from the horde server
     def get_top_n_models(self, top_n, period="day"):
+
         model_list = []
 
         # Never refresh more than once per hour
-        self.top_n_refresh_frequency = max(self.top_n_refresh_frequency, 3600)
+        if self.top_n_refresh_frequency < 3600:
+            self.top_n_refresh_frequency = 3600
+
         # Should we refresh the top n list?
         if self._last_top_n_refresh and time.monotonic() - self._last_top_n_refresh < self.top_n_refresh_frequency:
             # No, use cached data

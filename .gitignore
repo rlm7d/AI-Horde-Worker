@@ -169,7 +169,6 @@ nataili/**/*.bin
 nataili/**/*.txt
 nataili/**/*.yaml
 nataili/**/*.md5
-nataili/**/*.sha256
 nataili/**/*.safetensors
 nataili/embeds/*
 /outputs/
